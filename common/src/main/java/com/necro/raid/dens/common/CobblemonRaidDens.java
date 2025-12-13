@@ -19,6 +19,7 @@ import com.necro.raid.dens.common.util.IRaidAccessor;
 import com.necro.raid.dens.common.util.IShinyRate;
 import com.necro.raid.dens.common.util.RaidUtils;
 import kotlin.Unit;
+import net.minecraft.server.level.ServerPlayer;
 import me.shedaniel.autoconfig.AutoConfig;
 import me.shedaniel.autoconfig.serializer.JanksonConfigSerializer;
 import org.slf4j.Logger;
@@ -69,7 +70,11 @@ public class CobblemonRaidDens {
         });
         CobblemonEvents.BATTLE_VICTORY.subscribe(Priority.NORMAL, event -> {
             BattlePokemon battlePokemon = event.getLosers().getFirst().getActivePokemon().getFirst().getBattlePokemon();
-            if (battlePokemon != null && battlePokemon.getEffectedPokemon().getOwnerPlayer() != null) return Unit.INSTANCE;
+            if (battlePokemon != null && battlePokemon.getEffectedPokemon().getOwnerPlayer() != null) {
+                // Player lost - in coop mode, no penalty (handled by RaidInstance.removePlayer)
+                raidFailEvent(event.getBattle());
+                return Unit.INSTANCE;
+            }
             raidFailEvent(event.getBattle());
             return Unit.INSTANCE;
         });
@@ -94,6 +99,9 @@ public class CobblemonRaidDens {
             UUID battleId = ((IRaidAccessor) battle.getSide2().getActivePokemon().getFirst().getBattlePokemon().getEntity()).getRaidId();
             if (RaidHelper.ACTIVE_RAIDS.containsKey(battleId)) {
                 RaidInstance raidInstance = RaidHelper.ACTIVE_RAIDS.get(battleId);
+                ServerPlayer player = battle.getPlayers().getFirst();
+                // Apply partial damage for the HP they managed to deal before fleeing/losing
+                raidInstance.applyPartialDamage(player);
                 raidInstance.removePlayer(battle);
             }
         }

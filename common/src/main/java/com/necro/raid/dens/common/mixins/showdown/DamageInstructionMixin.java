@@ -77,15 +77,24 @@ public abstract class DamageInstructionMixin implements ActionEffectInstruction 
                 if (lang != null) battle.broadcastChatMessage(lang);
             }
 
+            ServerPlayer player = battle.getPlayers().getFirst();
             if (causedFaint) {
-                battlePokemon.getEffectedPokemon().setCurrentHealth(0);
-                raidInstance.queueStopRaid();
+                // Player defeated the boss - apply full Pokemon HP as damage to global HP
+                raidInstance.applyBattleDamage(player, raidInstance.getInitMaxHealth());
+                
+                // Check if shared raid HP is depleted
+                if (raidInstance.getRemainingHealth() <= 0) {
+                    // Raid complete - boss dies
+                    battlePokemon.getEffectedPokemon().setCurrentHealth(0);
+                } else {
+                    // Raid continues - end this battle but keep boss entity alive
+                    battlePokemon.getEffectedPokemon().setCurrentHealth(1);
+                }
             }
             else {
+                // During battle: just track current HP for potential flee/loss
                 float remainingHealth = Float.parseFloat(newHealth.split("/")[0]);
-                ServerPlayer player = battle.getPlayers().getFirst();
-                raidInstance.syncHealth(player, battle, remainingHealth);
-                battlePokemon.getEffectedPokemon().setCurrentHealth((int) raidInstance.getRemainingHealth());
+                raidInstance.trackBattleHp(player, remainingHealth);
             }
 
             if (lastCauser instanceof MoveInstruction && ((MoveInstruction) lastCauser).getActionEffect() != null && !causedFaint) {

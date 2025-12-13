@@ -163,6 +163,9 @@ public class RaidHelper extends SavedData {
     public static void commonTick() {
         List<RaidInstance> raids = new ArrayList<>(ACTIVE_RAIDS.values());
         raids.forEach(RaidInstance::tick);
+        
+        // Tick all active coop raids
+        CoopRaidSession.tickAllRaids();
     }
 
     public static Component getSystemMessage(String translatable) {

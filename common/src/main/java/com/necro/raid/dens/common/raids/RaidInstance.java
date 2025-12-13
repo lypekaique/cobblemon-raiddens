@@ -23,7 +23,6 @@ import com.necro.raid.dens.common.showdown.RaidBagItems;
 import com.necro.raid.dens.common.showdown.bagitems.CheerBagItem;
 import com.necro.raid.dens.common.showdown.bagitems.PlayerJoinBagItem;
 import com.necro.raid.dens.common.showdown.bagitems.StatChangeBagItem;
-import com.necro.raid.dens.common.util.IHealthSetter;
 import com.necro.raid.dens.common.util.IRaidAccessor;
 import com.necro.raid.dens.common.util.IRaidBattle;
 import net.minecraft.ChatFormatting;
@@ -57,6 +56,10 @@ public class RaidInstance {
 
     private final Map<UUID, Integer> cheersLeft;
     private final List<DelayedRunnable> runQueue;
+    
+    // Raid timer fields
+    private int raidTimerTicks;
+    private final int raidMaxTicks;
 
     public RaidInstance(PokemonEntity entity) {
         this.bossEntity = entity;
@@ -101,6 +104,20 @@ public class RaidInstance {
                 if (player.level() != this.bossEntity.level()) this.removePlayer(player);
             }
         }, 20, true));
+        
+        // Initialize raid timer
+        this.raidMaxTicks = CobblemonRaidDens.CONFIG.coop_raid_duration_seconds * 20;
+        this.raidTimerTicks = this.raidMaxTicks;
+        
+        // Apply tier-based health multiplier to SHARED raid HP (not the Pokemon's actual HP)
+        // The Pokemon keeps its normal HP for battles, but the shared raid HP pool is multiplied
+        if (this.raidBoss != null) {
+            TierConfig tierConfig = CobblemonRaidDens.TIER_CONFIG.get(this.raidBoss.getTier());
+            int healthMultiplier = tierConfig.coopHealthMultiplier();
+            this.maxHealth = this.initMaxHealth * healthMultiplier;
+            this.currentHealth = this.maxHealth;
+            // DON'T modify the Pokemon's actual HP - keep it normal for battles
+        }
     }
 
     public void addPlayer(ServerPlayer player, PokemonBattle battle) {
@@ -109,7 +126,8 @@ public class RaidInstance {
         this.battles.add(battle);
         this.bossEvent.addPlayer(player);
 
-        this.damageCache.put(player.getUUID(), this.currentHealth);
+        // Track the boss's normal HP at battle start (initMaxHealth = normal Pokemon HP)
+        this.damageCache.put(player.getUUID(), this.initMaxHealth);
         if (!this.activePlayers.isEmpty() && tierConfig.multiplayerHealthMultiplier() > 1.0f) this.applyHealthMulti(player);
         if (this.scriptByTurn.containsKey(0)) ((IRaidBattle) battle).addToQueue(INSTRUCTION_MAP.get(this.scriptByTurn.get(0)));
 
@@ -124,8 +142,8 @@ public class RaidInstance {
         this.maxHealth = this.initMaxHealth + bonusHealth;
         this.currentHealth = this.maxHealth * currentRatio;
 
-        ((IHealthSetter) this.bossEntity.getPokemon()).setMaxHealth((int) this.maxHealth, false);
-        this.bossEntity.getPokemon().setCurrentHealth((int) this.currentHealth);
+        // DON'T modify the Pokemon's HP - keep it normal for battles
+        // Only the shared raid HP pool (maxHealth/currentHealth) is multiplied
 
         this.battles.forEach(b -> {
             ServerPlayer player = b.getPlayers().getFirst();
@@ -142,7 +160,7 @@ public class RaidInstance {
         ((IRaidBattle) battle).setRaidBattle(null);
         this.bossEvent.removePlayer(player);
         this.damageCache.remove(player.getUUID());
-        this.failedPlayers.add(player.getUUID());
+        // Don't mark as failed so player can rejoin and continue fighting
     }
 
     public void removePlayer(PokemonBattle battle) {
@@ -157,11 +175,16 @@ public class RaidInstance {
     public void syncHealth(ServerPlayer player, PokemonBattle battle, float remainingHealth) {
         if (!this.activePlayers.contains(player) && ((IRaidBattle) battle).isRaidBattle()) this.addPlayer(player, battle);
 
-        float damage = this.damageCache.get(player.getUUID()) - remainingHealth;
+        // Calculate damage dealt this tick (difference from last known HP)
+        float lastKnownHp = this.damageCache.getOrDefault(player.getUUID(), this.initMaxHealth);
+        float damage = lastKnownHp - remainingHealth;
         this.damageCache.put(player.getUUID(), remainingHealth);
 
-        this.currentHealth = Math.clamp(this.currentHealth - damage, 0f, this.maxHealth);
-        this.activePlayers.forEach(p -> RaidDenNetworkMessages.SYNC_HEALTH.accept(p, this.currentHealth / this.maxHealth));
+        // Apply damage to shared raid HP pool
+        if (damage > 0) {
+            this.currentHealth = Math.clamp(this.currentHealth - damage, 0f, this.maxHealth);
+            this.activePlayers.forEach(p -> RaidDenNetworkMessages.SYNC_HEALTH.accept(p, this.currentHealth / this.maxHealth));
+        }
 
         if (this.currentHealth == 0f) {
             this.bossEvent.setProgress(this.currentHealth / this.maxHealth);
@@ -174,6 +197,17 @@ public class RaidInstance {
             }, 20));
         }
     }
+    
+    /**
+     * Called when a player wins their individual battle against the boss.
+     * Resets the player's damage cache so they can start a new battle.
+     * Each battle has its own BattlePokemon HP context, so we don't touch the entity HP.
+     */
+    public void onPlayerBattleWin(ServerPlayer player) {
+        // Reset damage cache for this player (they start fresh if they fight again)
+        this.damageCache.put(player.getUUID(), this.initMaxHealth);
+        // Don't reset boss entity HP - each battle has independent BattlePokemon HP
+    }
 
     public List<ServerPlayer> getPlayers() {
         return this.activePlayers;
@@ -182,6 +216,49 @@ public class RaidInstance {
     public float getRemainingHealth() {
         return this.currentHealth;
     }
+    
+    public float getInitMaxHealth() {
+        return this.initMaxHealth;
+    }
+    
+    /**
+     * Track current battle HP for a player (used for flee/loss damage calculation)
+     * Does NOT affect global HP - only tracks locally
+     */
+    public void trackBattleHp(ServerPlayer player, float currentHp) {
+        this.damageCache.put(player.getUUID(), currentHp);
+    }
+    
+    /**
+     * Apply damage to global raid HP when battle ends
+     * @param player The player who finished the battle
+     * @param damage The amount of damage to apply to global HP
+     */
+    public void applyBattleDamage(ServerPlayer player, float damage) {
+        this.currentHealth = Math.max(0, this.currentHealth - damage);
+        
+        // Update boss bar for all players
+        this.activePlayers.forEach(p -> RaidDenNetworkMessages.SYNC_HEALTH.accept(p, this.currentHealth / this.maxHealth));
+        this.bossEvent.setProgress(this.currentHealth / this.maxHealth);
+        
+        // Check if raid is complete
+        if (this.currentHealth <= 0) {
+            this.queueStopRaid();
+        }
+    }
+    
+    /**
+     * Called when player flees or loses - apply partial damage based on what they dealt
+     */
+    public void applyPartialDamage(ServerPlayer player) {
+        float lastHp = this.damageCache.getOrDefault(player.getUUID(), this.initMaxHealth);
+        float damageDealt = this.initMaxHealth - lastHp;
+        if (damageDealt > 0) {
+            this.applyBattleDamage(player, damageDealt);
+        }
+        // Reset for next battle
+        this.damageCache.put(player.getUUID(), this.initMaxHealth);
+    }
 
     public boolean hasFailed(ServerPlayer player) {
         return this.failedPlayers.contains(player.getUUID());
@@ -189,6 +266,51 @@ public class RaidInstance {
 
     public void tick() {
         this.runQueue.removeIf(DelayedRunnable::tick);
+        
+        // Keep boss entity alive while raid HP > 0
+        // Restore to normal Pokemon HP (initMaxHealth), not the multiplied global HP
+        if (this.currentHealth > 0 && this.bossEntity.getHealth() <= 1) {
+            this.bossEntity.setHealth(this.initMaxHealth);
+            this.bossEntity.getPokemon().setCurrentHealth((int) this.initMaxHealth);
+        }
+        
+        // Raid timer
+        if (!this.activePlayers.isEmpty()) {
+            this.raidTimerTicks--;
+            
+            // Update boss bar with time remaining every second
+            if (this.raidTimerTicks % 20 == 0) {
+                int remainingSeconds = this.raidTimerTicks / 20;
+                int minutes = remainingSeconds / 60;
+                int seconds = remainingSeconds % 60;
+                String timeStr = String.format("%d:%02d", minutes, seconds);
+                
+                MutableComponent name = ((MutableComponent) this.bossEntity.getName())
+                    .append(Component.literal(" - " + timeStr).withStyle(ChatFormatting.AQUA))
+                    .withStyle(ChatFormatting.BOLD);
+                this.bossEvent.setName(name);
+                
+                // Broadcast time warnings
+                if (remainingSeconds == 300 || remainingSeconds == 180 || 
+                    remainingSeconds == 60 || remainingSeconds == 30 || 
+                    remainingSeconds == 10 || (remainingSeconds <= 5 && remainingSeconds > 0)) {
+                    Component warning = Component.translatable(
+                        remainingSeconds >= 60 ? "message.cobblemonraiddens.coop_raid.time_warning_minutes" : "message.cobblemonraiddens.coop_raid.time_warning_seconds",
+                        remainingSeconds >= 60 ? remainingSeconds / 60 : remainingSeconds
+                    ).withStyle(remainingSeconds <= 10 ? ChatFormatting.RED : ChatFormatting.GOLD);
+                    this.activePlayers.forEach(p -> p.sendSystemMessage(warning));
+                }
+            }
+            
+            // Time's up - raid fails
+            if (this.raidTimerTicks <= 0) {
+                Component defeatMsg = Component.translatable("message.cobblemonraiddens.coop_raid.defeat",
+                    (int) this.currentHealth, (int) this.maxHealth)
+                    .withStyle(ChatFormatting.RED).withStyle(ChatFormatting.BOLD);
+                this.activePlayers.forEach(p -> p.sendSystemMessage(defeatMsg));
+                this.queueStopRaid(false);
+            }
+        }
     }
 
     public void queueStopRaid() {

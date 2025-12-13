@@ -4,6 +4,7 @@ import com.cobblemon.mod.common.entity.pokemon.PokemonEntity;
 import com.cobblemon.mod.common.pokemon.Pokemon;
 import com.cobblemon.mod.common.util.DataKeys;
 import com.cobblemon.mod.common.util.PlayerExtensionsKt;
+import com.necro.raid.dens.common.raids.CoopRaidSession;
 import com.necro.raid.dens.common.raids.RaidBoss;
 import com.necro.raid.dens.common.util.IHealthSetter;
 import com.necro.raid.dens.common.util.IRaidAccessor;
@@ -39,6 +40,9 @@ public abstract class PokemonEntityMixin extends TamableAnimal implements IRaidA
     @Unique
     private ResourceLocation raidBoss;
 
+    @Unique
+    private CoopRaidSession coopRaidSession;
+
     protected PokemonEntityMixin(EntityType<? extends TamableAnimal> entityType, Level level) {
         super(entityType, level);
     }
@@ -72,6 +76,21 @@ public abstract class PokemonEntityMixin extends TamableAnimal implements IRaidA
         this.raidBoss = raidBoss;
     }
 
+    @Override
+    public CoopRaidSession getCoopRaidSession() {
+        return this.coopRaidSession;
+    }
+
+    @Override
+    public void setCoopRaidSession(CoopRaidSession session) {
+        this.coopRaidSession = session;
+    }
+
+    @Override
+    public boolean isInCoopRaid() {
+        return this.coopRaidSession != null && this.coopRaidSession.isRaidActive();
+    }
+
     @Inject(method = "canBattle", at = @At("HEAD"), cancellable = true, remap = false)
     private void canBattleInject(Player player, CallbackInfoReturnable<Boolean> cir) {
         if (this.level().isClientSide()) cir.setReturnValue(true);
@@ -79,7 +98,7 @@ public abstract class PokemonEntityMixin extends TamableAnimal implements IRaidA
         else if (this.getHealth() <= 0F || this.isDeadOrDying() || PlayerExtensionsKt.isPartyBusy(player)) cir.setReturnValue(false);
         cir.setReturnValue(true);
     }
-
+    
     @Inject(method = "setBattleId", at = @At("HEAD"), cancellable = true, remap = false)
     private void setBattleInject(UUID battleId, CallbackInfo ci) {
         if (this.getRaidId() != null) ci.cancel();

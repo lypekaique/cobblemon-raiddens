@@ -153,5 +153,30 @@
     "text.autoconfig.cobblemonraiddens/client.option.raid_popup_x": "Raid Popup X (%)",
     "text.autoconfig.cobblemonraiddens/client.option.raid_popup_y": "Raid Popup Y (%)",
     "text.autoconfig.cobblemonraiddens/client.option.raid_status_x": "Raid Status X (%)",
-    "text.autoconfig.cobblemonraiddens/client.option.raid_status_y": "Raid Status Y (%)"
+    "text.autoconfig.cobblemonraiddens/client.option.raid_status_y": "Raid Status Y (%)",
+
+    "message.cobblemonraiddens.coop_raid.joined": "You have joined the cooperative raid!",
+    "message.cobblemonraiddens.coop_raid.damage_dealt": "%1$s defeated a Pokémon! -%2$d HP → Boss HP: %3$d/%4$d",
+    "message.cobblemonraiddens.coop_raid.status": "Raid Status - Boss HP: %d/%d | Time: %s | Players: %d",
+    "message.cobblemonraiddens.coop_raid.time_warning_minutes": "⚠ %d minute(s) remaining!",
+    "message.cobblemonraiddens.coop_raid.time_warning_seconds": "⚠ %d seconds remaining!",
+    "message.cobblemonraiddens.coop_raid.victory": "🎉 VICTORY! The raid boss was defeated in %d:%02d!",
+    "message.cobblemonraiddens.coop_raid.defeat": "💀 DEFEAT! Time ran out! Boss HP remaining: %d/%d",
+    "message.cobblemonraiddens.coop_raid.contributions": "Player Contributions:",
+    "message.cobblemonraiddens.coop_raid.started": "A cooperative raid has started! Defeat the boss before time runs out!",
+    "message.cobblemonraiddens.coop_raid.player_left": "%s has left the raid.",
+    "message.cobblemonraiddens.coop_raid.already_in_raid": "You are already in a cooperative raid!",
+    "message.cobblemonraiddens.coop_raid.raid_not_active": "This raid is no longer active.",
+    "message.cobblemonraiddens.coop_raid.battle_again": "Battle again to continue reducing the boss HP!",
+
+    "text.autoconfig.cobblemonraiddens/common.option.coop_raid_enabled": "Enable Coop Raid Mode",
+    "text.autoconfig.cobblemonraiddens/common.option.coop_raid_duration_seconds": "Coop Raid Duration (seconds)",
+
+    "text.autoconfig.cobblemonraiddens/tier_one.option.coop_health_multiplier": "Coop Raid HP Multiplier",
+    "text.autoconfig.cobblemonraiddens/tier_two.option.coop_health_multiplier": "Coop Raid HP Multiplier",
+    "text.autoconfig.cobblemonraiddens/tier_three.option.coop_health_multiplier": "Coop Raid HP Multiplier",
+    "text.autoconfig.cobblemonraiddens/tier_four.option.coop_health_multiplier": "Coop Raid HP Multiplier",
+    "text.autoconfig.cobblemonraiddens/tier_five.option.coop_health_multiplier": "Coop Raid HP Multiplier",
+    "text.autoconfig.cobblemonraiddens/tier_six.option.coop_health_multiplier": "Coop Raid HP Multiplier",
+    "text.autoconfig.cobblemonraiddens/tier_seven.option.coop_health_multiplier": "Coop Raid HP Multiplier"
 }

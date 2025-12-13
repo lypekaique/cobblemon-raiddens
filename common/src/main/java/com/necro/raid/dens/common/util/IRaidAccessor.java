@@ -1,5 +1,6 @@
 package com.necro.raid.dens.common.util;
 
+import com.necro.raid.dens.common.raids.CoopRaidSession;
 import com.necro.raid.dens.common.raids.RaidBoss;
 import net.minecraft.resources.ResourceLocation;
 
@@ -15,4 +16,10 @@ public interface IRaidAccessor {
     void setRaidBoss(ResourceLocation raidBoss);
 
     boolean isRaidBoss();
+
+    CoopRaidSession getCoopRaidSession();
+
+    void setCoopRaidSession(CoopRaidSession session);
+
+    boolean isInCoopRaid();
 }

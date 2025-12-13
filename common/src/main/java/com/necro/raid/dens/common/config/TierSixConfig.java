@@ -45,6 +45,8 @@ public class TierSixConfig implements ConfigData, TierConfig {
     public Map<String, String> default_scripts = new HashMap<>();
     @Comment("The battle AI used by the raid boss (Options: RANDOM, STRONG, RCT). Default: RANDOM")
     public RaidAI raid_ai = RaidAI.RANDOM;
+    @Comment("Cooperative raid boss HP multiplier (boss HP = normal HP * multiplier). Default: 12")
+    public int coop_health_multiplier = 12;
 
     public boolean requiresKey() {
         return this.requires_key;
@@ -96,5 +98,8 @@ public class TierSixConfig implements ConfigData, TierConfig {
     }
     public RaidAI raidAI() {
         return this.raid_ai;
+    }
+    public int coopHealthMultiplier() {
+        return this.coop_health_multiplier;
     }
 }

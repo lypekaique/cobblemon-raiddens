@@ -27,4 +27,7 @@ public class RaidConfig implements ConfigData {
     public boolean cache_dimensions = false;
     @Comment("Whether raid crystals can be broken. Default: true")
     public boolean can_break = true;
+    
+    @Comment("Duration of raids in seconds. Default: 600 (10 minutes)")
+    public int coop_raid_duration_seconds = 600;
 }

@@ -132,8 +132,8 @@ public class RaidBoss {
             );
         }
 
-        int healthMulti = this.healthMulti;
-        ((IHealthSetter) pokemon).setMaxHealth(healthMulti * pokemon.getMaxHealth());
+        // Don't multiply Pokemon HP here - keep normal HP for battles
+        // The shared raid HP pool (multiplied) is handled separately in RaidInstance
 
         for (SpeciesFeature form : this.raidForm) {
             ((CustomPokemonProperty) form).apply(pokemon);

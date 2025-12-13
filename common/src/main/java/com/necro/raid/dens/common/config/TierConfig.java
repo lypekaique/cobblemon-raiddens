@@ -22,4 +22,5 @@ public interface TierConfig {
     int maxCatches();
     Map<String, String> defaultScripts();
     RaidAI raidAI();
+    int coopHealthMultiplier();
 }
