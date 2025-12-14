@@ -17,6 +17,7 @@
         "dimension.MinecraftServerMixin",
         "dimension.ServerLevelAccessor",
         "raid.CommandsMixin",
+        "raid.LivingEntityMixin",
         "raid.PokemonBattleMixin",
         "raid.PokemonEntityMixin",
         "raid.PokemonMixin",

@@ -6,4 +6,6 @@ public interface IHealthSetter {
     default void setMaxHealth(int maxHealth) {
         this.setMaxHealth(maxHealth, true);
     }
+    
+    void clearMaxHealthBuffer();
 }

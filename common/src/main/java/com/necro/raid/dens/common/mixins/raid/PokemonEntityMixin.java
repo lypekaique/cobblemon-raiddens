@@ -42,6 +42,12 @@ public abstract class PokemonEntityMixin extends TamableAnimal implements IRaidA
 
     @Unique
     private CoopRaidSession coopRaidSession;
+    
+    /**
+     * Flag to allow boss death - only set when raid HP reaches 0
+     */
+    @Unique
+    private boolean allowDeath = false;
 
     protected PokemonEntityMixin(EntityType<? extends TamableAnimal> entityType, Level level) {
         super(entityType, level);
@@ -90,12 +96,23 @@ public abstract class PokemonEntityMixin extends TamableAnimal implements IRaidA
     public boolean isInCoopRaid() {
         return this.coopRaidSession != null && this.coopRaidSession.isRaidActive();
     }
+    
+    @Override
+    public boolean isAllowedToDie() {
+        return this.allowDeath;
+    }
+    
+    @Override
+    public void setAllowedToDie(boolean allowed) {
+        this.allowDeath = allowed;
+    }
 
     @Inject(method = "canBattle", at = @At("HEAD"), cancellable = true, remap = false)
     private void canBattleInject(Player player, CallbackInfoReturnable<Boolean> cir) {
         if (this.level().isClientSide()) cir.setReturnValue(true);
         if (this.getRaidId() == null) return;
-        else if (this.getHealth() <= 0F || this.isDeadOrDying() || PlayerExtensionsKt.isPartyBusy(player)) cir.setReturnValue(false);
+        else if (this.isDeadOrDying() || PlayerExtensionsKt.isPartyBusy(player)) cir.setReturnValue(false);
+        // Raid boss can always battle even if HP is low - HP is restored after each battle
         cir.setReturnValue(true);
     }
     

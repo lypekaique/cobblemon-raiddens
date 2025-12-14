@@ -19,6 +19,7 @@ import com.necro.raid.dens.common.raids.RaidBoss;
 import com.necro.raid.dens.common.raids.RaidBuilder;
 import com.necro.raid.dens.common.raids.RaidHelper;
 import com.necro.raid.dens.common.raids.RaidInstance;
+import com.necro.raid.dens.common.util.IHealthSetter;
 import com.necro.raid.dens.common.util.IRaidAccessor;
 import com.necro.raid.dens.common.util.RaidUtils;
 import kotlin.Unit;
@@ -73,11 +74,21 @@ public record RaidChallengePacket(int targetedEntityId, UUID selectedPokemonId, 
         UUID raidId = ((IRaidAccessor) pokemonEntity).getRaidId();
         RaidInstance raid = RaidHelper.ACTIVE_RAIDS.getOrDefault(raidId, null);
         if (raid != null) {
+            // CRITICAL: Check if raid is already complete FIRST - before any lobby checks
+            if (raid.getRemainingHealth() <= 0) {
+                // Raid is complete, don't allow new battles or show lobby errors
+                return;
+            }
+            
             if (raid.hasFailed(player)) {
                 player.sendSystemMessage(Component.translatable("message.cobblemonraiddens.raid.has_fainted").withStyle(ChatFormatting.RED));
                 return;
             }
-            else if (raid.getPlayers().size() >= tierConfig.maxPlayers()) {
+            
+            // Only check lobby capacity for NEW players joining the raid
+            // Players already in the raid (activePlayers) can freely start new battles
+            boolean isAlreadyInRaid = raid.getPlayers().contains(player);
+            if (!isAlreadyInRaid && raid.getPlayers().size() >= tierConfig.maxPlayers()) {
                 player.sendSystemMessage(Component.translatable("message.cobblemonraiddens.raid.lobby_is_full").withStyle(ChatFormatting.RED));
                 return;
             }
@@ -101,6 +112,15 @@ public record RaidChallengePacket(int targetedEntityId, UUID selectedPokemonId, 
         UUID leadingPokemon = pokemon.getUuid();
 
         if (PlayerExtensionsKt.canInteractWith(player, pokemonEntity, Cobblemon.config.getBattleWildMaxDistance() * 4.0f) && pokemonEntity.canBattle(player)) {
+            // Remove player from any previous raids to avoid duplicate boss bars
+            for (RaidInstance existingRaid : RaidHelper.ACTIVE_RAIDS.values()) {
+                existingRaid.removePlayer(player);
+            }
+            
+            // Clear any modified HP buffer BEFORE battle starts so battle uses normal Pokemon HP
+            ((IHealthSetter) pokemonEntity.getPokemon()).clearMaxHealthBuffer();
+            pokemonEntity.getPokemon().setCurrentHealth(pokemonEntity.getPokemon().getMaxHealth());
+            
             RaidBuilder.build(player, pokemonEntity, leadingPokemon, boss, tierConfig)
                 .ifSuccessful(battle -> {
                     this.flagAsSeen(battle, pokemonEntity);

@@ -55,6 +55,9 @@ public class RaidExitHelper {
         if (home == null) return;
 
         if (home.getBlockEntity(homeBlock.getHomePos()) instanceof RaidCrystalBlockEntity raidCrystalBlockEntity) {
+            // Remove player from active RaidInstance (boss bar, battles, tracking)
+            removePlayerFromActiveRaid(player, from);
+            
             if (from.getEntitiesOfClass(LivingEntity.class, new AABB(BlockPos.ZERO).inflate(48), RaidExitHelper::isAlive).isEmpty()) raidCrystalBlockEntity.clearRaid();
             else if (from.getEntitiesOfClass(Player.class, new AABB(BlockPos.ZERO).inflate(48)).isEmpty()) raidCrystalBlockEntity.setQueueClose();
             raidCrystalBlockEntity.addChunkTicket();
@@ -62,6 +65,20 @@ public class RaidExitHelper {
         }
 
         RaidDenNetworkMessages.JOIN_RAID.accept(player, false);
+    }
+    
+    /**
+     * Remove player from any active RaidInstance when leaving the raid dimension.
+     * This cleans up: boss bar, battle tracking, damage cache, cheers, etc.
+     */
+    private static void removePlayerFromActiveRaid(ServerPlayer player, ServerLevel raidLevel) {
+        // Find active raid instances and remove player
+        for (RaidInstance raid : RaidHelper.ACTIVE_RAIDS.values()) {
+            if (raid.getPlayers().contains(player)) {
+                raid.removePlayerCompletely(player);
+                break;
+            }
+        }
     }
 
     private static boolean isAlive(LivingEntity entity) {

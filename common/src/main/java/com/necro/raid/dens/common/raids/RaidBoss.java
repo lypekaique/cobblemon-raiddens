@@ -134,6 +134,8 @@ public class RaidBoss {
 
         // Don't multiply Pokemon HP here - keep normal HP for battles
         // The shared raid HP pool (multiplied) is handled separately in RaidInstance
+        // Clear any existing maxHealthBuffer to ensure normal HP is used
+        ((IHealthSetter) pokemon).clearMaxHealthBuffer();
 
         for (SpeciesFeature form : this.raidForm) {
             ((CustomPokemonProperty) form).apply(pokemon);

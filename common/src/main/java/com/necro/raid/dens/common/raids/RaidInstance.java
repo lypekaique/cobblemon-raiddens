@@ -23,6 +23,7 @@ import com.necro.raid.dens.common.showdown.RaidBagItems;
 import com.necro.raid.dens.common.showdown.bagitems.CheerBagItem;
 import com.necro.raid.dens.common.showdown.bagitems.PlayerJoinBagItem;
 import com.necro.raid.dens.common.showdown.bagitems.StatChangeBagItem;
+import com.necro.raid.dens.common.util.IHealthSetter;
 import com.necro.raid.dens.common.util.IRaidAccessor;
 import com.necro.raid.dens.common.util.IRaidBattle;
 import net.minecraft.ChatFormatting;
@@ -75,9 +76,16 @@ public class RaidInstance {
         this.activePlayers = new ArrayList<>();
         this.failedPlayers = new ArrayList<>();
 
+        // Clear any modified HP buffer to get the REAL Pokemon HP
+        ((IHealthSetter) entity.getPokemon()).clearMaxHealthBuffer();
+        
         this.currentHealth = entity.getPokemon().getCurrentHealth();
         this.maxHealth = entity.getPokemon().getMaxHealth();
         this.initMaxHealth = this.maxHealth;
+        
+        // Also reset Pokemon HP to its normal max
+        entity.getPokemon().setCurrentHealth(entity.getPokemon().getMaxHealth());
+        entity.setHealth(entity.getMaxHealth());
 
         this.scriptByTurn = new HashMap<>();
         this.scriptByHp = new TreeMap<>();
@@ -186,27 +194,33 @@ public class RaidInstance {
             this.activePlayers.forEach(p -> RaidDenNetworkMessages.SYNC_HEALTH.accept(p, this.currentHealth / this.maxHealth));
         }
 
+        // Update boss bar IMMEDIATELY - no delay for better responsiveness
+        this.bossEvent.setProgress(this.currentHealth / this.maxHealth);
+        
         if (this.currentHealth == 0f) {
-            this.bossEvent.setProgress(this.currentHealth / this.maxHealth);
             this.queueStopRaid();
         }
         else {
-            this.runQueue.add(new DelayedRunnable(() -> {
-                this.bossEvent.setProgress(this.currentHealth / this.maxHealth);
-                this.runScriptByHp((double) this.currentHealth / this.maxHealth);
-            }, 20));
+            // Run HP-based scripts (these can still be slightly delayed if needed)
+            this.runScriptByHp((double) this.currentHealth / this.maxHealth);
         }
     }
     
     /**
      * Called when a player wins their individual battle against the boss.
-     * Resets the player's damage cache so they can start a new battle.
-     * Each battle has its own BattlePokemon HP context, so we don't touch the entity HP.
+     * Removes the battle from the active list and resets tracking.
+     * The player can start a new battle if the raid is still active.
      */
-    public void onPlayerBattleWin(ServerPlayer player) {
+    public void onPlayerBattleWin(ServerPlayer player, PokemonBattle battle) {
+        // Remove this battle from the active list
+        this.battles.remove(battle);
+        ((IRaidBattle) battle).setRaidBattle(null);
+        
         // Reset damage cache for this player (they start fresh if they fight again)
         this.damageCache.put(player.getUUID(), this.initMaxHealth);
-        // Don't reset boss entity HP - each battle has independent BattlePokemon HP
+        
+        // Don't remove player from activePlayers - they can fight again if raid continues
+        // Don't modify boss entity HP - it should restore naturally
     }
 
     public List<ServerPlayer> getPlayers() {
@@ -227,6 +241,13 @@ public class RaidInstance {
      */
     public void trackBattleHp(ServerPlayer player, float currentHp) {
         this.damageCache.put(player.getUUID(), currentHp);
+    }
+    
+    /**
+     * Get the tracked battle HP for a player
+     */
+    public float getTrackedBattleHp(ServerPlayer player) {
+        return this.damageCache.getOrDefault(player.getUUID(), this.initMaxHealth);
     }
     
     /**
@@ -266,13 +287,6 @@ public class RaidInstance {
 
     public void tick() {
         this.runQueue.removeIf(DelayedRunnable::tick);
-        
-        // Keep boss entity alive while raid HP > 0
-        // Restore to normal Pokemon HP (initMaxHealth), not the multiplied global HP
-        if (this.currentHealth > 0 && this.bossEntity.getHealth() <= 1) {
-            this.bossEntity.setHealth(this.initMaxHealth);
-            this.bossEntity.getPokemon().setCurrentHealth((int) this.initMaxHealth);
-        }
         
         // Raid timer
         if (!this.activePlayers.isEmpty()) {
@@ -324,13 +338,52 @@ public class RaidInstance {
     public void stopRaid(boolean raidSuccess) {
         this.bossEvent.setVisible(false);
         this.bossEvent.removeAllPlayers();
-        if (raidSuccess) this.bossEntity.setHealth(0f);
+        
+        // Allow boss to die and kill it only on raid success (global HP reached 0)
+        if (raidSuccess) {
+            ((IRaidAccessor) this.bossEntity).setAllowedToDie(true);
+            this.bossEntity.setHealth(0f);
+        }
+        
         RaidHelper.ACTIVE_RAIDS.remove(((IRaidAccessor) this.bossEntity).getRaidId());
         this.battles.forEach(PokemonBattle::stop);
         if (this.raidBoss == null) return;
 
         if (raidSuccess) this.handleSuccess();
         else this.handleFailed();
+    }
+    
+    /**
+     * Remove a player completely from the raid (when leaving via crystal).
+     * Cleans up all states: boss bar, battles, tracking.
+     */
+    public void removePlayerCompletely(ServerPlayer player) {
+        // Remove from boss bar
+        this.bossEvent.removePlayer(player);
+        
+        // Remove from active players list
+        this.activePlayers.remove(player);
+        
+        // Remove damage tracking
+        this.damageCache.remove(player.getUUID());
+        
+        // Remove cheers tracking
+        this.cheersLeft.remove(player.getUUID());
+        
+        // Find and remove any active battle for this player
+        this.battles.removeIf(battle -> {
+            if (battle.getPlayers().contains(player)) {
+                ((IRaidBattle) battle).setRaidBattle(null);
+                battle.stop();
+                return true;
+            }
+            return false;
+        });
+        
+        // If no players left, end the raid
+        if (this.activePlayers.isEmpty()) {
+            this.queueStopRaid(false);
+        }
     }
 
     private void handleSuccess() {

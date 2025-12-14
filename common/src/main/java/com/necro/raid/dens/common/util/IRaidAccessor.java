@@ -22,4 +22,14 @@ public interface IRaidAccessor {
     void setCoopRaidSession(CoopRaidSession session);
 
     boolean isInCoopRaid();
+    
+    /**
+     * Check if boss is allowed to die (only when global raid HP reaches 0)
+     */
+    boolean isAllowedToDie();
+    
+    /**
+     * Set whether boss is allowed to die
+     */
+    void setAllowedToDie(boolean allowed);
 }
